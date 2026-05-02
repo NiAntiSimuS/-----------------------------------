@@ -2,14 +2,9 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Крестики-нолики - Поиск игры</title>
+    <title>Крестики-нолики – поиск</title>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             min-height: 100vh;
             background: white;
@@ -20,8 +15,7 @@
             flex-direction: column;
         }
         .big-button {
-            width: 280px;
-            height: 280px;
+            width: 280px; height: 280px;
             border-radius: 50%;
             background: #e53935;
             border: none;
@@ -33,27 +27,15 @@
             align-items: center;
             justify-content: center;
             text-align: center;
-            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+            box-shadow: 0 4px 10px rgba(0,0,0,0.2);
             transition: transform 0.1s ease;
         }
-        .big-button:active {
-            transform: scale(0.96);
-        }
+        .big-button:active { transform: scale(0.96); }
         @media (max-width: 600px) {
-            .big-button {
-                width: 200px;
-                height: 200px;
-                font-size: 1.5rem;
-            }
+            .big-button { width: 200px; height: 200px; font-size: 1.5rem; }
         }
-        .status {
-            margin-top: 20px;
-            font-size: 1.2rem;
-            color: #333;
-        }
-        .error {
-            color: #e53935;
-        }
+        .status { margin-top: 20px; font-size: 1.2rem; color: #333; }
+        .error { color: #e53935; }
     </style>
 </head>
 <body>
@@ -61,58 +43,32 @@
     <div class="status" id="status">Нажмите кнопку, чтобы найти игру</div>
 
     <script>
-        const button = document.getElementById('mainButton');
-        const statusDiv = document.getElementById('status');
-        let currentToken = null;
-        let pollingInterval = null;
+        let ws = null;
 
-        button.addEventListener('click', async () => {
-            if (currentToken) {
-                statusDiv.innerHTML = 'Вы уже в очереди или игре. Обновите страницу.';
+        document.getElementById('mainButton').addEventListener('click', () => {
+            if (ws && ws.readyState === WebSocket.OPEN) {
                 return;
             }
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            ws = new WebSocket(`${protocol}//${window.location.host}/ws`);
+            const statusDiv = document.getElementById('status');
+            statusDiv.innerHTML = 'Поиск соперника...';
 
-            try {
-                const response = await fetch('/find_game', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({})
-                });
-                const data = await response.json();
-                if (data.status === 'ready') {
-                    // Сразу переходим в игру
-                    window.location.href = `/game?room=${data.room}&role=${data.role}&token=${data.token}`;
-                } else if (data.status === 'waiting') {
-                    currentToken = data.token;
-                    statusDiv.innerHTML = 'Поиск соперника...';
-                    // Начинаем опрашивать /check_queue
-                    pollingInterval = setInterval(async () => {
-                        try {
-                            const resp = await fetch('/check_queue', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ token: currentToken })
-                            });
-                            const checkData = await resp.json();
-                            if (checkData.status === 'ready') {
-                                clearInterval(pollingInterval);
-                                window.location.href = `/game?room=${checkData.room}&role=${checkData.role}&token=${checkData.token}`;
-                            } else if (checkData.status === 'error') {
-                                clearInterval(pollingInterval);
-                                statusDiv.innerHTML = `<span class="error">${checkData.message}</span>`;
-                                currentToken = null;
-                            }
-                        } catch (err) {
-                            console.error(err);
-                        }
-                    }, 2000); // каждые 2 секунды
-                } else {
-                    statusDiv.innerHTML = `<span class="error">Неизвестный ответ сервера</span>`;
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                if (data.type === 'match_found') {
+                    // Переходим на игровой сервер
+                    const gameUrl = `http://${window.location.hostname}:${data.port}/game?role=${data.role}&token=${data.token}`;
+                    window.location.href = gameUrl;
                 }
-            } catch (err) {
-                statusDiv.innerHTML = `<span class="error">Ошибка подключения к серверу</span>`;
-                console.error(err);
-            }
+            };
+            ws.onerror = () => {
+                statusDiv.innerHTML = '<span class="error">Ошибка соединения с сервером</span>';
+            };
+            ws.onclose = () => {
+                if (statusDiv.innerHTML !== 'Поиск соперника...') return;
+                statusDiv.innerHTML = '<span class="error">Соединение потеряно. Обновите страницу.</span>';
+            };
         });
     </script>
 </body>

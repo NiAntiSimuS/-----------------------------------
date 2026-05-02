@@ -2,8 +2,7 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Крестики-нолики - Игра</title>
+    <title>Крестики-нолики – игра</title>
     <style>
         body {
             display: flex;
@@ -32,15 +31,9 @@
             font-weight: bold;
             cursor: pointer;
             border-radius: 8px;
-            transition: background 0.1s;
         }
-        .cell:hover {
-            background-color: #e0e0e0;
-        }
-        .status {
-            margin-top: 20px;
-            font-size: 1.5rem;
-        }
+        .cell:hover { background-color: #e0e0e0; }
+        .status { margin-top: 20px; font-size: 1.5rem; }
         button {
             margin-top: 20px;
             padding: 10px 20px;
@@ -51,41 +44,36 @@
             color: white;
             border-radius: 5px;
         }
-        button:hover {
-            background-color: #45a049;
-        }
-        .disabled {
-            pointer-events: none;
-            opacity: 0.6;
-        }
+        .disabled { pointer-events: none; opacity: 0.6; }
     </style>
 </head>
 <body>
     <div class="board" id="board"></div>
-    <div class="status" id="status">Загрузка...</div>
+    <div class="status" id="status">Подключение...</div>
     <button id="resetButton">Новая игра</button>
 
     <script>
         const urlParams = new URLSearchParams(window.location.search);
-        const room = urlParams.get('room');
         const role = urlParams.get('role');
         const token = urlParams.get('token');
 
-        if (!room || !role || !token) {
+        if (!role || !token) {
             alert('Неверные параметры игры');
             window.location.href = '/';
         }
 
+        let ws = null;
         let boardState = Array(9).fill('');
         let currentTurn = 'X';
         let winner = null;
         let tie = false;
-        let gameActive = true;
-        let pollingInterval = null;
+        let gameActive = false;
+        let myTurn = false;
 
         const boardDiv = document.getElementById('board');
         const statusDiv = document.getElementById('status');
 
+        // Создаём ячейки
         for (let i = 0; i < 9; i++) {
             const cell = document.createElement('div');
             cell.classList.add('cell');
@@ -95,92 +83,73 @@
         }
         const cells = document.querySelectorAll('.cell');
 
-        function updateBoardUI() {
+        function updateUI() {
             cells.forEach((cell, idx) => {
                 cell.textContent = boardState[idx];
             });
-
             if (winner) {
-                const winnerText = (winner === role) ? 'Вы победили!' : 'Противник победил!';
-                statusDiv.innerHTML = winnerText;
+                const winText = (winner === role) ? 'Вы победили!' : 'Противник победил!';
+                statusDiv.innerText = winText;
                 gameActive = false;
                 boardDiv.classList.add('disabled');
-                if (pollingInterval) clearInterval(pollingInterval);
             } else if (tie) {
                 statusDiv.innerText = 'Ничья!';
                 gameActive = false;
                 boardDiv.classList.add('disabled');
-                if (pollingInterval) clearInterval(pollingInterval);
             } else {
-                statusDiv.innerText = (currentTurn === role) ? 'Ваш ход' : 'Ход соперника...';
-                if (currentTurn === role && !winner && !tie) {
-                    boardDiv.classList.remove('disabled');
-                } else {
-                    boardDiv.classList.add('disabled');
-                }
+                statusDiv.innerText = myTurn ? 'Ваш ход' : 'Ход соперника...';
+                if (myTurn && gameActive) boardDiv.classList.remove('disabled');
+                else boardDiv.classList.add('disabled');
             }
         }
 
-        async function makeMove(index) {
-            if (!gameActive || winner || tie) return;
-            if (currentTurn !== role) {
-                alert('Сейчас не ваш ход');
-                return;
-            }
+        function makeMove(index) {
+            if (!gameActive || !myTurn || winner || tie) return;
             if (boardState[index] !== '') {
                 alert('Клетка уже занята');
                 return;
             }
+            ws.send(JSON.stringify({ type: 'move', index: index }));
+        }
 
-            try {
-                const response = await fetch('/make_move', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ room, index, role, token })
-                });
-                const data = await response.json();
-                if (data.error) {
+        function connectGame() {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            ws = new WebSocket(`${protocol}//${window.location.host}/ws/${role}`);
+
+            ws.onopen = () => {
+                ws.send(JSON.stringify({ token: token }));
+            };
+
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                if (data.type === 'connected') {
+                    statusDiv.innerText = 'Ожидание соперника...';
+                } else if (data.board !== undefined) {
+                    // Пришло состояние игры
+                    boardState = data.board;
+                    currentTurn = data.turn;
+                    winner = data.winner;
+                    tie = data.tie;
+                    gameActive = data.game_active;
+                    myTurn = (currentTurn === role && gameActive);
+                    updateUI();
+                } else if (data.error) {
                     alert(data.error);
-                } else {
-                    //ход успешно отправлен, ждём обновления состояния от polling
                 }
-            } catch (err) {
-                alert('Ошибка отправки хода');
-                console.error(err);
-            }
+            };
+
+            ws.onclose = () => {
+                if (!winner && !tie) {
+                    alert('Соединение разорвано. Игра завершена.');
+                }
+                window.location.href = '/';
+            };
         }
 
-        async function fetchGameState() {
-            try {
-                const response = await fetch(`/game_state/${room}`);
-                if (response.status === 404) {
-                    alert('Игра завершена или соперник покинул её');
-                    window.location.href = '/';
-                    return;
-                }
-                const data = await response.json();
-                boardState = data.board;
-                currentTurn = data.turn;
-                winner = data.winner;
-                tie = data.tie;
-                updateBoardUI();
-            } catch (err) {
-                console.error('Ошибка получения состояния игры', err);
-            }
-        }
+        connectGame();
 
-        pollingInterval = setInterval(fetchGameState, 800);
-        fetchGameState();
-
-        document.getElementById('resetButton').addEventListener('click', async () => {
-            try {
-                await fetch('/leave_game', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ room, token })
-                });
-            } catch (err) {}
-            if (pollingInterval) clearInterval(pollingInterval);
+        document.getElementById('resetButton').addEventListener('click', () => {
+            ws.close();
             window.location.href = '/';
         });
     </script>
