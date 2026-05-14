@@ -1,157 +1,159 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ru">
-<head>
-    <meta charset="UTF-8">
-    <title>Крестики-нолики – игра</title>
-    <style>
-        body {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-            background: #f0f0f0;
-            font-family: system-ui, sans-serif;
-            flex-direction: column;
-        }
-        .board {
-            display: grid;
-            grid-template-columns: repeat(3, 100px);
-            grid-template-rows: repeat(3, 100px);
-            gap: 5px;
-            background-color: #333;
-            padding: 5px;
-            border-radius: 10px;
-        }
-        .cell {
-            background-color: white;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 48px;
-            font-weight: bold;
-            cursor: pointer;
-            border-radius: 8px;
-        }
-        .cell:hover { background-color: #e0e0e0; }
-        .status { margin-top: 20px; font-size: 1.5rem; }
-        button {
-            margin-top: 20px;
-            padding: 10px 20px;
-            font-size: 1rem;
-            cursor: pointer;
-            border: none;
-            background-color: #4CAF50;
-            color: white;
-            border-radius: 5px;
-        }
-        .disabled { pointer-events: none; opacity: 0.6; }
-    </style>
-</head>
-<body>
-    <div class="board" id="board"></div>
-    <div class="status" id="status">Подключение...</div>
-    <button id="resetButton">Новая игра</button>
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Крестики-нолики</title>
 
-    <script>
-        const urlParams = new URLSearchParams(window.location.search);
-        const role = urlParams.get('role');
-        const token = urlParams.get('token');
+		<style>
+			body {
+				margin: 0;
+				padding: 0;
 
-        if (!role || !token) {
-            alert('Неверные параметры игры');
-            window.location.href = '/';
-        }
+				min-height: 100vh;
 
-        let ws = null;
-        let boardState = Array(9).fill('');
-        let currentTurn = 'X';
-        let winner = null;
-        let tie = false;
-        let gameActive = false;
-        let myTurn = false;
+				display: flex;
+				justify-content: center;
+				align-items: center;
+				flex-direction: column;
 
-        const boardDiv = document.getElementById('board');
-        const statusDiv = document.getElementById('status');
+				background: #f2f2f2;
 
-        // Создаём ячейки
-        for (let i = 0; i < 9; i++) {
-            const cell = document.createElement('div');
-            cell.classList.add('cell');
-            cell.dataset.index = i;
-            cell.addEventListener('click', () => makeMove(i));
-            boardDiv.appendChild(cell);
-        }
-        const cells = document.querySelectorAll('.cell');
+				font-family: Arial, sans-serif;
+			}
 
-        function updateUI() {
-            cells.forEach((cell, idx) => {
-                cell.textContent = boardState[idx];
-            });
-            if (winner) {
-                const winText = (winner === role) ? 'Вы победили!' : 'Противник победил!';
-                statusDiv.innerText = winText;
-                gameActive = false;
-                boardDiv.classList.add('disabled');
-            } else if (tie) {
-                statusDiv.innerText = 'Ничья!';
-                gameActive = false;
-                boardDiv.classList.add('disabled');
-            } else {
-                statusDiv.innerText = myTurn ? 'Ваш ход' : 'Ход соперника...';
-                if (myTurn && gameActive) boardDiv.classList.remove('disabled');
-                else boardDiv.classList.add('disabled');
-            }
-        }
+			.board {
+				display: grid;
 
-        function makeMove(index) {
-            if (!gameActive || !myTurn || winner || tie) return;
-            if (boardState[index] !== '') {
-                alert('Клетка уже занята');
-                return;
-            }
-            ws.send(JSON.stringify({ type: 'move', index: index }));
-        }
+				grid-template-columns: repeat(3, 120px);
+				grid-template-rows: repeat(3, 120px);
 
-        function connectGame() {
-            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            ws = new WebSocket(`${protocol}//${window.location.host}/ws/${role}`);
+				gap: 5px;
+			}
 
-            ws.onopen = () => {
-                ws.send(JSON.stringify({ token: token }));
-            };
+			.cell {
+				background: white;
 
-            ws.onmessage = (event) => {
-                const data = JSON.parse(event.data);
-                if (data.type === 'connected') {
-                    statusDiv.innerText = 'Ожидание соперника...';
-                } else if (data.board !== undefined) {
-                    // Пришло состояние игры
-                    boardState = data.board;
-                    currentTurn = data.turn;
-                    winner = data.winner;
-                    tie = data.tie;
-                    gameActive = data.game_active;
-                    myTurn = (currentTurn === role && gameActive);
-                    updateUI();
-                } else if (data.error) {
-                    alert(data.error);
-                }
-            };
+				display: flex;
+				justify-content: center;
+				align-items: center;
 
-            ws.onclose = () => {
-                if (!winner && !tie) {
-                    alert('Соединение разорвано. Игра завершена.');
-                }
-                window.location.href = '/';
-            };
-        }
+				font-size: 64px;
+				font-weight: bold;
 
-        connectGame();
+				cursor: pointer;
 
-        document.getElementById('resetButton').addEventListener('click', () => {
-            ws.close();
-            window.location.href = '/';
-        });
-    </script>
-</body>
+				border-radius: 10px;
+			}
+
+			.status {
+				margin-top: 20px;
+
+				font-size: 28px;
+			}
+		</style>
+	</head>
+	<body>
+		<div class="board" id="board"></div>
+
+		<div class="status" id="status">Подключение...</div>
+
+		<script>
+			const params = new URLSearchParams(window.location.search)
+
+			const role = params.get('role')
+			const token = params.get('token')
+
+			const port = window.location.port
+
+			const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+
+			const ws = new WebSocket(
+				`${protocol}//${window.location.hostname}:${port}/ws/${role}`,
+			)
+
+			let board = Array(9).fill('')
+
+			let turn = 'X'
+
+			let winner = null
+
+			const boardDiv = document.getElementById('board')
+
+			const statusDiv = document.getElementById('status')
+
+			for (let i = 0; i < 9; i++) {
+				const cell = document.createElement('div')
+
+				cell.className = 'cell'
+
+				cell.dataset.index = i
+
+				cell.onclick = () => makeMove(i)
+
+				boardDiv.appendChild(cell)
+			}
+
+			const cells = document.querySelectorAll('.cell')
+
+			ws.onopen = () => {
+				ws.send(
+					JSON.stringify({
+						token: token,
+					}),
+				)
+			}
+
+			ws.onmessage = event => {
+				const data = JSON.parse(event.data)
+
+				if (data.board) {
+					board = data.board
+
+					turn = data.turn
+
+					winner = data.winner
+
+					render()
+				}
+			}
+
+			function render() {
+				for (let i = 0; i < 9; i++) {
+					cells[i].innerText = board[i]
+				}
+
+				if (winner) {
+					if (winner === role) {
+						statusDiv.innerText = 'Вы победили!'
+					} else {
+						statusDiv.innerText = 'Вы проиграли!'
+					}
+
+					return
+				}
+
+				if (turn === role) {
+					statusDiv.innerText = 'Ваш ход'
+				} else {
+					statusDiv.innerText = 'Ход соперника'
+				}
+			}
+
+			function makeMove(index) {
+				if (winner) return
+
+				if (turn !== role) return
+
+				if (board[index] !== '') return
+
+				ws.send(
+					JSON.stringify({
+						type: 'move',
+						index: index,
+					}),
+				)
+			}
+		</script>
+	</body>
 </html>
